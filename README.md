@@ -1,7 +1,7 @@
 # @marianmeres/data-to-sql-params
 
 A single utility function to convert data object to various helper lists.
-Useful for automatically creating SQL statements.
+Useful for programmatically creating SQL statements.
 
 ## Installation
 
@@ -61,15 +61,15 @@ const result = dataToSqlParams({ a: 1, x: undefined, b: 2, c: 3 }, ['b', 'c', 'x
 // custom extractor example - transforming data upon extraction
 // (explicit true below just whitelists the given key)
 const result = dataToSqlParams(
-	{ a: 1, x: undefined, b: 2, c: 3 },
-	{ b: true, c: (v) => `${v + v}` }
+	{ id: 1, x: undefined, b: 2, c: 3 },
+	{ id: true, c: (v) => `${v + v}` }
 );
 /* result is now:
     {
-        keys: [ '"b"', '"c"' ],
+        keys: [ '"id"', '"c"' ],
         placeholders: [ '$1', '$2' ],
-        values: [ 2, '6' ],
-        pairs: [ '"b"=$1', '"c"=$2' ],
+        values: [ 1, '6' ],
+        pairs: [ '"id"=$1', '"c"=$2' ],
         _next: 3,
         _extractor: Record<string, CallableFunction> (actual value omitted)
     }
@@ -85,10 +85,15 @@ For helping to programmatically build SQL statements. For example:
 let { keys, values, placeholders, pairs, _next } = result;
 
 if (fooRecordExists) {
-	sql = `update foo set ${pairs} where "id" = $${_next++}`;
-	// update foo set "b" = $1,"c" = $2 where "id" = $3
+	const pk = 'id'; // example
+	sql = `update foo set ${pairs} where "${pk}" = $${_next++}`;
+	// update foo set "id" = $1,"c" = $2 where "id" = $3
+	values.push(_extractor[pk](data[pk]));
 } else {
 	sql = `insert into foo (${keys}) values (${placeholders})`;
-	// insert into foo ("b", "c") values ($1, $2)
+	// insert into foo ("id", "c") values ($1, $2)
 }
+
+// and now execute the statement
+await db.query(sql, values);
 ```
