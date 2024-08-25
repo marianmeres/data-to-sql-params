@@ -1,6 +1,6 @@
 {
 	"name": "@marianmeres/data-to-sql-params",
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"description": "A single helper function to convert data objects to a numbered list of parameters. Useful for automatically creating SQL statements.",
 	"type": "module",
 	"main": "./dist/index.js",
