@@ -1,7 +1,6 @@
 # @marianmeres/data-to-sql-params
 
-A single helper function to convert data objects to various helper lists.
-Useful for programmatically creating SQL statements.
+A helper function for extracting and converting data objects to various helper lists useful for programmatically creating SQL statements.
 
 ## Installation
 
@@ -64,7 +63,7 @@ const result = dataToSqlParams({ a: 1, x: undefined, b: 2, c: 3 }, ['b', 'c', 'x
 
 ```js
 // custom extractor example - transforming data upon extraction
-// eg. cast to string, JSON encode, etc...
+// eg. type casting, JSON stringify, filtering, etc...
 // (explicit true below just whitelists the given key)
 const result = dataToSqlParams(
 	{ id: 1, x: undefined, b: 2, c: 3 },
@@ -81,13 +80,13 @@ const result = dataToSqlParams(
 } */
 ```
 
-## What is it good for?
+## But why?
 
-For helping to programmatically build SQL statements. For example:
+For example:
 
 ```js
 // assuming result from the last example above
-let { keys, values, placeholders, pairs, map, _next } = result;
+let { keys, values, placeholders, pairs, map, _next, _extractor } = result;
 
 if (fooRecordExists) {
 	const pk = 'id'; // example
@@ -102,6 +101,6 @@ if (fooRecordExists) {
 // and now execute the statement
 await db.query(sql, values);
 
-// or we can use the named map (if the db supports it), eg:
+// or we can use the named map manually (if the db supports it), eg:
 await db.run('update foo set c = $c where id = $id', map);
 ```
