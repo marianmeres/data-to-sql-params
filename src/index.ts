@@ -29,7 +29,7 @@ export const dataToSqlParams = (
 			if (data[k] === undefined) return m;
 
 			// explicit true is a special case no transform signal
-			if (extract === true) extract = (v: any) => v;
+			if (extract === true) extract = _noTransform;
 
 			// save for later reuse
 			m._extractor[k] = extract;
