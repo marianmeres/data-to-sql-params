@@ -75,7 +75,7 @@ const result = dataToSqlParams(
     placeholders: [ '$1', '$2' ],
     values: [ 1, '6' ],
     pairs: [ '"id"=$1', '"c"=$2' ],
-    map: { $id: 1, $c: 6 },
+    map: { $id: 1, $c: '6' },
     _next: 3,
     _extractor: Record<string, CallableFunction> (actual value omitted)
 } */
