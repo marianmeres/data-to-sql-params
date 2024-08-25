@@ -1,6 +1,6 @@
 # @marianmeres/data-to-sql-params
 
-A single utility function to convert data object to various helper lists.
+A single helper function to convert data objects to various helper lists.
 Useful for programmatically creating SQL statements.
 
 ## Installation
