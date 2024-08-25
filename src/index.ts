@@ -7,6 +7,7 @@ export const dataToSqlParams = (
 	placeholders: string[];
 	values: any[];
 	pairs: string[];
+	map: Record<string, any>;
 	_next: number;
 	_extractor: Record<string, CallableFunction>;
 } => {
@@ -45,6 +46,7 @@ export const dataToSqlParams = (
 				m.placeholders.push(placeholder);
 				m.values.push(value);
 				m.pairs.push(`${key}=${placeholder}`);
+				m.map[`$${k}`] = value;
 
 				// somewhat special case info for potential later consumption
 				m._next = _counter;
@@ -57,6 +59,7 @@ export const dataToSqlParams = (
 			placeholders: [],
 			values: [],
 			pairs: [],
+			map: {},
 			_next: _counter,
 			_extractor: {},
 		} as any

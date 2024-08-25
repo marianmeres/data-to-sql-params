@@ -9,7 +9,7 @@ Useful for programmatically creating SQL statements.
 npm install @marianmeres/data-to-sql-params
 ```
 
-## `dataToSqlParams` signature
+## Signature
 
 ```typescript
 function dataToSqlParams(
@@ -20,6 +20,7 @@ function dataToSqlParams(
 	placeholders: string[];
 	values: any[];
 	pairs: string[];
+	map: Record<string, any>;
 	_next: number;
 	_extractor: Record<string, CallableFunction>;
 } {
@@ -31,49 +32,52 @@ function dataToSqlParams(
 
 ```js
 import { dataToSqlParams } from '@marianmeres/data-to-sql-params';
+```
 
+```js
 // no extractor example - all defined keys are extracted
 const result = dataToSqlParams({ a: 1, x: undefined, b: 2, c: 3 });
-/* result is now:
-    {
-        keys: [ '"a"', '"b"', '"c"' ],
-        placeholders: [ '$1', '$2', '$3' ],
-        pairs: [ '"a"=$1', '"b"=$2', '"c"=$3' ],
-        values: [ 1, 2, 3 ],
-        _next: 4,
-        _extractor: Record<string, CallableFunction> (actual value omitted)
-    }
-*/
+/* {
+    keys: [ '"a"', '"b"', '"c"' ],
+    placeholders: [ '$1', '$2', '$3' ],
+    pairs: [ '"a"=$1', '"b"=$2', '"c"=$3' ],
+    values: [ 1, 2, 3 ],
+    map: { $a: 1, $b: 2, $c: 3 },
+    _next: 4,
+    _extractor: Record<string, CallableFunction> (actual value omitted)
+} */
+```
 
+```js
 // extractor as a plain key whitelist (note that "x" will not be part of output)
 const result = dataToSqlParams({ a: 1, x: undefined, b: 2, c: 3 }, ['b', 'c', 'x']);
-/* result is now:
-    {
-        keys: [ '"b"', '"c"' ],
-        placeholders: [ '$1', '$2' ],
-        values: [ 2, 3 ],
-        pairs: [ '"b"=$1', '"c"=$2' ],
-        _next: 3,
-        _extractor: Record<string, CallableFunction> (actual value omitted)
-    }
-*/
+/* {
+    keys: [ '"b"', '"c"' ],
+    placeholders: [ '$1', '$2' ],
+    values: [ 2, 3 ],
+    pairs: [ '"b"=$1', '"c"=$2' ],
+    map: { $b: 2, $c: 3 },
+    _next: 3,
+    _extractor: Record<string, CallableFunction> (actual value omitted)
+} */
+```
 
-// custom extractor example - transforming data upon extraction
+```js
+// custom extractor example - transforming data upon extraction (eg. cast to string, JSON encode, etc...)
 // (explicit true below just whitelists the given key)
 const result = dataToSqlParams(
 	{ id: 1, x: undefined, b: 2, c: 3 },
 	{ id: true, c: (v) => `${v + v}` }
 );
-/* result is now:
-    {
-        keys: [ '"id"', '"c"' ],
-        placeholders: [ '$1', '$2' ],
-        values: [ 1, '6' ],
-        pairs: [ '"id"=$1', '"c"=$2' ],
-        _next: 3,
-        _extractor: Record<string, CallableFunction> (actual value omitted)
-    }
-*/
+/* {
+    keys: [ '"id"', '"c"' ],
+    placeholders: [ '$1', '$2' ],
+    values: [ 1, '6' ],
+    pairs: [ '"id"=$1', '"c"=$2' ],
+    map: { $id: 1, $c: 6 },
+    _next: 3,
+    _extractor: Record<string, CallableFunction> (actual value omitted)
+} */
 ```
 
 ## What is it good for?
@@ -82,7 +86,7 @@ For helping to programmatically build SQL statements. For example:
 
 ```js
 // assuming result from the last example above
-let { keys, values, placeholders, pairs, _next } = result;
+let { keys, values, placeholders, pairs, map, _next } = result;
 
 if (fooRecordExists) {
 	const pk = 'id'; // example
@@ -96,4 +100,7 @@ if (fooRecordExists) {
 
 // and now execute the statement
 await db.query(sql, values);
+
+// or we can use the named map (if the db supports it), eg:
+await db.run('update foo set c = $c where id = $id', map);
 ```
