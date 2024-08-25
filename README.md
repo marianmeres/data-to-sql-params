@@ -63,7 +63,8 @@ const result = dataToSqlParams({ a: 1, x: undefined, b: 2, c: 3 }, ['b', 'c', 'x
 ```
 
 ```js
-// custom extractor example - transforming data upon extraction (eg. cast to string, JSON encode, etc...)
+// custom extractor example - transforming data upon extraction
+// eg. cast to string, JSON encode, etc...
 // (explicit true below just whitelists the given key)
 const result = dataToSqlParams(
 	{ id: 1, x: undefined, b: 2, c: 3 },
