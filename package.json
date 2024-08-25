@@ -1,0 +1,42 @@
+{
+	"name": "@marianmeres/data-to-sql-params",
+	"version": "1.0.1",
+	"description": "A single helper function to convert data objects to a numbered list of parameters. Useful for automatically creating SQL statements.",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"clean": "rimraf dist/*",
+		"prettier": "prettier --write \"{src,tests}/**/*.{js,ts,json}\"",
+		"build": "npm run clean && tsc -p tsconfig.json",
+		"dev": "npm run clean && tsc -w",
+		"test": "test-runner",
+		"release": "release -v minor",
+		"release:patch": "release -v patch",
+		"release:major": "release -v major"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+ssh://git@github.com/marianmeres/data-to-sql-params.git"
+	},
+	"keywords": [
+		"sql"
+	],
+	"author": "Marian Meres <marian@meres.sk>",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/marianmeres/data-to-sql-params/issues"
+	},
+	"homepage": "https://github.com/marianmeres/data-to-sql-params#readme",
+	"devDependencies": {
+		"@marianmeres/release": "^1.1.2",
+		"@marianmeres/test-runner": "^2.1.0",
+		"lodash": "^4.17.21",
+		"prettier": "^3.3.3",
+		"rimraf": "^6.0.1",
+		"typescript": "^5.5.4"
+	}
+}
