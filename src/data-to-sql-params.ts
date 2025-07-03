@@ -1,3 +1,5 @@
+// deno-lint-ignore-file no-explicit-any
+
 //
 export type TransformFn = (v: any) => any;
 
@@ -32,8 +34,8 @@ export const dataToSqlParams = (
 	let _counter = 1;
 	return Object.entries(extractor).reduce(
 		(m, [k, extract]) => {
-			// both undefined or explicit false are understood as to skip the k
-			if (data[k] === undefined || data[k] === false) return m;
+			// skip undefineds
+			if (data[k] === undefined || extract === false) return m;
 
 			// explicit true is a special case no transform signal
 			if (extract === true) extract = _noTransform;
