@@ -16,7 +16,8 @@
 		"test": "test-runner",
 		"release": "release -v minor",
 		"release:patch": "release -v patch",
-		"release:major": "release -v major"
+		"release:major": "release -v major",
+		"release:publish": "npm run build && npm run release && npm publish --access=public"
 	},
 	"repository": {
 		"type": "git",
