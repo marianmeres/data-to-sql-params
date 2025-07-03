@@ -24,12 +24,7 @@ suite.test('no extractor works', () => {
 
 suite.test('extractor as array whitelist works', () => {
 	const { keys, placeholders, pairs, values, map } = dataToSqlParams(
-		{
-			a: 1,
-			x: undefined,
-			b: 2,
-			c: 3,
-		},
+		{ a: 1, x: undefined, b: 2, c: 3 },
 		// note that "x" must not be part of output even if present here
 		['b', 'c', 'x']
 	);
@@ -43,12 +38,7 @@ suite.test('extractor as array whitelist works', () => {
 
 suite.test('extractor map works', () => {
 	const { keys, placeholders, pairs, values, map, _extractor } = dataToSqlParams(
-		{
-			a: 1,
-			x: undefined,
-			b: 2,
-			c: 3,
-		},
+		{ a: 1, x: undefined, b: 2, c: 3 },
 		{
 			// explicit true is special case "no transform" signal
 			b: true,

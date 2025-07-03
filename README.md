@@ -13,7 +13,7 @@ npm install @marianmeres/data-to-sql-params
 ```typescript
 function dataToSqlParams(
 	data: Record<string, any>,
-	extractor?: string[] | Record<string, CallableFunction | true>
+	extractor?: string[] | Record<string, TransformFn | boolean>
 ): {
 	keys: string[];
 	placeholders: string[];
@@ -21,7 +21,7 @@ function dataToSqlParams(
 	pairs: string[];
 	map: Record<string, any>;
 	_next: number;
-	_extractor: Record<string, CallableFunction>;
+	_extractor: Record<string, TransformFn>;
 } {
 	/* ... */
 }

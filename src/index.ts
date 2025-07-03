@@ -1,7 +1,13 @@
 //
+export type TransformFn = (v: any) => any;
+
+/**
+ * Simple helper fn to generate keys, placeholders and values from plain objects
+ * helping to generate sql statements
+ */
 export const dataToSqlParams = (
 	data: Record<string, any>,
-	extractor?: string[] | Record<string, CallableFunction | true>
+	extractor?: string[] | Record<string, TransformFn | boolean>
 ): {
 	keys: string[];
 	placeholders: string[];
@@ -9,7 +15,7 @@ export const dataToSqlParams = (
 	pairs: string[];
 	map: Record<string, any>;
 	_next: number;
-	_extractor: Record<string, CallableFunction>;
+	_extractor: Record<string, TransformFn>;
 } => {
 	const _noTransform = (v: any) => v;
 
@@ -26,10 +32,16 @@ export const dataToSqlParams = (
 	let _counter = 1;
 	return Object.entries(extractor).reduce(
 		(m, [k, extract]) => {
-			if (data[k] === undefined) return m;
+			// both undefined or explicit false are understood as to skip the k
+			if (data[k] === undefined || data[k] === false) return m;
 
 			// explicit true is a special case no transform signal
 			if (extract === true) extract = _noTransform;
+
+			// we're positively expecting transformer fn here...
+			if (typeof extract !== 'function') {
+				throw new TypeError(`Unexpected transformer value '${extract}'`);
+			}
 
 			// save for later reuse
 			m._extractor[k] = extract;
