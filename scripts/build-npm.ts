@@ -1,5 +1,3 @@
-// deno-lint-ignore-file no-explicit-any
-
 import { ensureDir, emptyDir, copySync, walkSync } from "@std/fs";
 import { join } from "@std/path";
 import denoJson from "../deno.json" with { type: "json" };
@@ -41,15 +39,14 @@ Deno.copyFileSync("README.md", join(outDir, "README.md"));
 const tsconfigJson = {
 	compilerOptions: {
 		target: "esnext",
-		module: "nodenext",
+		module: "esnext",
 		strict: false,
 		declaration: true,
 		forceConsistentCasingInFileNames: true,
 		skipLibCheck: true,
 		rootDir: "src",
 		outDir: "dist",
-		moduleResolution: "nodenext",
-		types: ["node"]
+		moduleResolution: "bundler",
 	},
 };
 Deno.writeTextFileSync(
@@ -83,10 +80,9 @@ const packageJson = {
 		url: "https://github.com/marianmeres/data-to-sql-params/issues",
 	},
 	dependencies: {
-		"@types/node": "latest"
 	}
 };
-// "pg": "^8.16.2",
+
 Deno.writeTextFileSync(
 	join(outDir, "package.json"),
 	JSON.stringify(packageJson, null, "\t")

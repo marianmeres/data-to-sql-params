@@ -17,5 +17,10 @@
 		"lineWidth": 90,
 		"indentWidth": 4,
 		"proseWrap": "preserve"
+	},
+	"lint": {
+		"rules": {
+			"exclude": ["no-explicit-any"]
+		}
 	}
 }
