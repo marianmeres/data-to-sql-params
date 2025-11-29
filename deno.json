@@ -1,6 +1,6 @@
 {
 	"name": "@marianmeres/data-to-sql-params",
-	"version": "1.4.0",
+	"version": "1.5.0",
 	"exports": "./src/mod.ts",
 	"tasks": {
 		"test": "deno test -A --env-file --watch",
