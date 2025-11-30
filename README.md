@@ -31,12 +31,12 @@ function dataToSqlParams(
 	data: Record<string, any>,
 	extractor?: string[] | Record<string, TransformFn | boolean>
 ): {
-	keys: string[];          // Quoted SQL identifiers: ['"name"', '"age"']
-	placeholders: string[];  // Positional params: ['$1', '$2']
-	values: any[];           // Extracted values: ['John', 30]
-	pairs: string[];         // UPDATE pairs: ['"name" = $1', '"age" = $2']
+	keys: string[];           // Quoted SQL identifiers: ['"name"', '"age"']
+	placeholders: string[];   // Positional params: ['$1', '$2']
+	values: any[];            // Extracted values: ['John', 30]
+	pairs: string[];          // pairs: ['"name" = $1', '"age" = $2']
 	map: Record<string, any>; // Named params: {$name: 'John', $age: 30}
-	_next: number;           // Next placeholder number available
+	_next: number;            // Next placeholder number available
 	_extractor: Record<string, TransformFn>; // Transform functions used
 }
 ```
