@@ -1,5 +1,8 @@
 # @marianmeres/data-to-sql-params
 
+[![NPM version](https://img.shields.io/npm/v/@marianmeres/data-to-sql-params.svg)](https://www.npmjs.com/package/@marianmeres/data-to-sql-params)
+[![JSR version](https://jsr.io/badges/@marianmeres/data-to-sql-params)](https://jsr.io/@marianmeres/data-to-sql-params)
+
 A lightweight utility function for converting data objects into SQL parameter lists, making it easier to build dynamic SQL statements with parameterized queries.
 
 Generates PostgreSQL-style placeholders (`$1`, `$2`, etc.) and properly quoted SQL identifiers, with support for value transformation and selective field extraction.
