@@ -2,6 +2,7 @@
 
 [![NPM version](https://img.shields.io/npm/v/@marianmeres/data-to-sql-params.svg)](https://www.npmjs.com/package/@marianmeres/data-to-sql-params)
 [![JSR version](https://jsr.io/badges/@marianmeres/data-to-sql-params)](https://jsr.io/@marianmeres/data-to-sql-params)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A lightweight utility function for converting data objects into SQL parameter lists, making it easier to build dynamic SQL statements with parameterized queries.
 
@@ -29,19 +30,13 @@ npm install @marianmeres/data-to-sql-params
 
 ## API
 
+> **Full API documentation:** [API.md](API.md)
+
 ```typescript
 function dataToSqlParams(
-	data: Record<string, any>,
-	extractor?: string[] | Record<string, TransformFn | boolean>
-): {
-	keys: string[];           // Quoted SQL identifiers: ['"name"', '"age"']
-	placeholders: string[];   // Positional params: ['$1', '$2']
-	values: any[];            // Extracted values: ['John', 30]
-	pairs: string[];          // pairs: ['"name" = $1', '"age" = $2']
-	map: Record<string, any>; // Named params: {$name: 'John', $age: 30}
-	_next: number;            // Next placeholder number available
-	_extractor: Record<string, TransformFn>; // Transform functions used
-}
+  data: Record<string, any>,
+  extractor?: string[] | Record<string, TransformFn | boolean>
+): SqlParamsResult
 ```
 
 ### Parameters
@@ -55,17 +50,17 @@ function dataToSqlParams(
     - `false` - Exclude key from extraction
     - `function` - Apply transformation to the value
 
-### Return Value
+### Return Value (`SqlParamsResult`)
 
-All return fields work together to support different SQL statement patterns:
-
-- **`keys`** - Array of SQL-quoted identifiers, useful for INSERT column lists
-- **`placeholders`** - Array of numbered placeholders (`$1`, `$2`, ...), corresponding to values
-- **`values`** - Array of extracted values in the same order as placeholders
-- **`pairs`** - Array of `"key" = $N` strings, useful for UPDATE statements
-- **`map`** - Object with `$key` properties for named parameter style (if supported by your DB driver)
-- **`_next`** - The next placeholder number, useful when adding additional WHERE conditions
-- **`_extractor`** - The transform functions used, allowing you to reuse them for consistency
+| Property | Type | Description |
+|----------|------|-------------|
+| `keys` | `string[]` | SQL-quoted identifiers for INSERT column lists |
+| `placeholders` | `string[]` | Numbered placeholders (`$1`, `$2`, ...) |
+| `values` | `any[]` | Extracted values in placeholder order |
+| `pairs` | `string[]` | `"key" = $N` strings for UPDATE SET clauses |
+| `map` | `Record<string, any>` | Named parameters with `$` prefix |
+| `_next` | `number` | Next available placeholder number |
+| `_extractor` | `Record<string, TransformFn>` | Transform functions for reuse |
 
 ## Usage Examples
 

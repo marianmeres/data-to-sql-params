@@ -1,7 +1,109 @@
 /**
- * Transform function type for converting values during extraction
+ * @module
+ *
+ * Converts JavaScript objects into SQL parameter lists for building parameterized SQL statements.
+ *
+ * This module provides utilities for transforming data objects into PostgreSQL-style
+ * parameterized query components (`$1`, `$2`, etc.), with support for value transformation
+ * and selective field extraction.
+ *
+ * @example Basic usage
+ * ```ts
+ * import { dataToSqlParams } from "@marianmeres/data-to-sql-params";
+ *
+ * const { keys, placeholders, values } = dataToSqlParams({ name: "John", age: 30 });
+ * const sql = `INSERT INTO users (${keys.join(", ")}) VALUES (${placeholders.join(", ")})`;
+ * // sql = 'INSERT INTO users ("name", "age") VALUES ($1, $2)'
+ * // values = ["John", 30]
+ * ```
  */
+
+/**
+ * Transform function type for converting values during extraction.
+ *
+ * A transform function receives a value from the source data object and returns
+ * a transformed value to be used in the SQL parameters. Return `undefined` to
+ * skip the field entirely.
+ *
+ * @param v - The original value from the data object
+ * @returns The transformed value, or `undefined` to skip this field
+ *
+ * @example
+ * ```ts
+ * // Transform a Date to ISO string
+ * const dateTransform: TransformFn = (v) => v.toISOString();
+ *
+ * // Transform to uppercase
+ * const upperTransform: TransformFn = (v) => v.toUpperCase();
+ *
+ * // Conditionally skip a field
+ * const skipEmpty: TransformFn = (v) => v || undefined;
+ * ```
+ */
+// deno-lint-ignore no-explicit-any
 export type TransformFn = (v: any) => any;
+
+/**
+ * Result object returned by {@link dataToSqlParams}.
+ *
+ * Contains all the components needed to build parameterized SQL statements.
+ */
+export interface SqlParamsResult {
+	/**
+	 * Array of SQL-quoted identifiers (column names).
+	 *
+	 * @example `['"name"', '"age"']`
+	 */
+	keys: string[];
+
+	/**
+	 * Array of PostgreSQL-style positional placeholders.
+	 *
+	 * @example `['$1', '$2']`
+	 */
+	placeholders: string[];
+
+	/**
+	 * Array of extracted values in the same order as placeholders.
+	 *
+	 * @example `['John', 30]`
+	 */
+	// deno-lint-ignore no-explicit-any
+	values: any[];
+
+	/**
+	 * Array of "key = placeholder" strings for UPDATE SET clauses.
+	 *
+	 * @example `['"name" = $1', '"age" = $2']`
+	 */
+	pairs: string[];
+
+	/**
+	 * Object with named parameters using `$` prefix for the key.
+	 * Useful for database drivers that support named parameters.
+	 *
+	 * @example `{ $name: 'John', $age: 30 }`
+	 */
+	// deno-lint-ignore no-explicit-any
+	map: Record<string, any>;
+
+	/**
+	 * The next placeholder number available for additional parameters.
+	 * Useful when adding WHERE conditions after building the main query.
+	 *
+	 * @example If 3 fields were extracted, `_next` will be `4`
+	 */
+	_next: number;
+
+	/**
+	 * Object containing the transform functions used for each key.
+	 * Allows reusing transformations for consistency (e.g., in WHERE clause).
+	 *
+	 * Note: Boolean values (`true`/`false`) in the extractor are converted
+	 * to identity functions or excluded, respectively.
+	 */
+	_extractor: Record<string, TransformFn>;
+}
 
 /**
  * Converts a data object into SQL parameter lists for building dynamic SQL statements.
@@ -49,17 +151,10 @@ export type TransformFn = (v: any) => any;
  * );
  */
 export const dataToSqlParams = (
+	// deno-lint-ignore no-explicit-any
 	data: Record<string, any>,
 	extractor?: string[] | Record<string, TransformFn | boolean>
-): {
-	keys: string[];
-	placeholders: string[];
-	values: any[];
-	pairs: string[];
-	map: Record<string, any>;
-	_next: number;
-	_extractor: Record<string, TransformFn>;
-} => {
+): SqlParamsResult => {
 	const _noTransform = (v: any) => v;
 
 	// If no extractor is provided, collect all data keys
