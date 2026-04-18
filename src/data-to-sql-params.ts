@@ -4,8 +4,9 @@
  * Converts JavaScript objects into SQL parameter lists for building parameterized SQL statements.
  *
  * This module provides utilities for transforming data objects into PostgreSQL-style
- * parameterized query components (`$1`, `$2`, etc.), with support for value transformation
- * and selective field extraction.
+ * parameterized query components (`$1`, `$2`, etc.), with support for value transformation,
+ * selective field extraction, alternate placeholder styles and composable results for
+ * `WHERE` clauses.
  *
  * @example Basic usage
  * ```ts
@@ -44,6 +45,46 @@
 export type TransformFn = (v: any) => any;
 
 /**
+ * Supported placeholder dialects.
+ *
+ * - `pg`    → `$1`, `$2`, ... (PostgreSQL, SQLite)
+ * - `mysql` → `?`, `?`, ...   (MySQL, MariaDB; no numbering)
+ * - `mssql` → `@p1`, `@p2`, ... (SQL Server)
+ */
+export type PlaceholderStyle = "pg" | "mysql" | "mssql";
+
+/**
+ * Options for {@link dataToSqlParams}.
+ */
+export interface SqlParamsOptions {
+	/**
+	 * Placeholder dialect to emit for `placeholders` and `pairs`.
+	 * Default: `"pg"`.
+	 *
+	 * Note: `map` always uses the `$name` convention regardless of this option,
+	 * because named parameters and positional placeholders are independent concerns.
+	 */
+	placeholderStyle?: PlaceholderStyle;
+
+	/**
+	 * Starting number for positional placeholders. Default: `1`.
+	 *
+	 * Set this to an existing result's `next` to compose a `WHERE` clause
+	 * that continues numbering from a previous `dataToSqlParams` call
+	 * without colliding.
+	 *
+	 * @example
+	 * ```ts
+	 * const set = dataToSqlParams(updates);
+	 * const where = dataToSqlParams({ id: 123 }, undefined, { startAt: set.next });
+	 * const sql = `UPDATE t SET ${set.pairs.join(", ")} WHERE ${where.pairs.join(" AND ")}`;
+	 * await db.query(sql, [...set.values, ...where.values]);
+	 * ```
+	 */
+	startAt?: number;
+}
+
+/**
  * Result object returned by {@link dataToSqlParams}.
  *
  * Contains all the components needed to build parameterized SQL statements.
@@ -57,14 +98,15 @@ export interface SqlParamsResult {
 	keys: string[];
 
 	/**
-	 * Array of PostgreSQL-style positional placeholders.
+	 * Array of positional placeholders, in the dialect set by
+	 * {@link SqlParamsOptions.placeholderStyle} (default `pg`).
 	 *
 	 * @example `['$1', '$2']`
 	 */
 	placeholders: string[];
 
 	/**
-	 * Array of extracted values in the same order as placeholders.
+	 * Array of extracted values in the same order as {@link placeholders}.
 	 *
 	 * @example `['John', 30]`
 	 */
@@ -72,7 +114,7 @@ export interface SqlParamsResult {
 	values: any[];
 
 	/**
-	 * Array of "key = placeholder" strings for UPDATE SET clauses.
+	 * Array of `"key" = placeholder` strings for UPDATE SET clauses or WHERE conjuncts.
 	 *
 	 * @example `['"name" = $1', '"age" = $2']`
 	 */
@@ -80,7 +122,10 @@ export interface SqlParamsResult {
 
 	/**
 	 * Object with named parameters using `$` prefix for the key.
-	 * Useful for database drivers that support named parameters.
+	 * Useful for database drivers that consume named parameters (e.g. `better-sqlite3`).
+	 *
+	 * Note: the `$name` prefix is unrelated to the `$1`/`$2` positional placeholders
+	 * in {@link placeholders} — this object is a separate named-parameter output.
 	 *
 	 * @example `{ $name: 'John', $age: 30 }`
 	 */
@@ -88,130 +133,176 @@ export interface SqlParamsResult {
 	map: Record<string, any>;
 
 	/**
-	 * The next placeholder number available for additional parameters.
-	 * Useful when adding WHERE conditions after building the main query.
+	 * The next available placeholder number. Feed this into
+	 * {@link SqlParamsOptions.startAt} of a follow-up call to extend the parameter list.
 	 *
-	 * @example If 3 fields were extracted, `_next` will be `4`
+	 * @example If 3 fields were extracted, `next` is `4`.
+	 */
+	next: number;
+
+	/**
+	 * Transform functions used for each successfully extracted key, keyed by original field name.
+	 * Enables reusing the same transformation elsewhere (e.g. for a WHERE clause that must
+	 * match the format written into the SET clause).
+	 *
+	 * Boolean `true` in the input extractor is stored here as an identity function;
+	 * keys excluded via `false`, missing from data, or whose transformer returned
+	 * `undefined` do NOT appear here.
+	 */
+	transformers: Record<string, TransformFn>;
+
+	/**
+	 * Alias of {@link next}. Retained for backwards compatibility.
+	 *
+	 * @deprecated Prefer {@link next}.
 	 */
 	_next: number;
 
 	/**
-	 * Object containing the transform functions used for each key.
-	 * Allows reusing transformations for consistency (e.g., in WHERE clause).
+	 * Alias of {@link transformers} — the same object is referenced. Retained for backwards compatibility.
 	 *
-	 * Note: Boolean values (`true`/`false`) in the extractor are converted
-	 * to identity functions or excluded, respectively.
+	 * @deprecated Prefer {@link transformers}.
 	 */
 	_extractor: Record<string, TransformFn>;
 }
 
 /**
+ * Extractor shape accepted by {@link dataToSqlParams}.
+ *
+ * - `undefined`: extract every own key of `data` whose value is not `undefined`
+ * - array: whitelist of keys to extract (own keys only)
+ * - object map: per-key control (`true` = pass through, `false` = exclude, function = transform)
+ */
+export type Extractor<T> =
+	| ReadonlyArray<Extract<keyof T, string>>
+	| { [K in Extract<keyof T, string>]?: TransformFn | boolean }
+	| readonly string[]
+	| Record<string, TransformFn | boolean>;
+
+const _noTransform: TransformFn = (v) => v;
+
+const formatPlaceholder = (n: number, style: PlaceholderStyle): string => {
+	switch (style) {
+		case "mysql":
+			return "?";
+		case "mssql":
+			return `@p${n}`;
+		case "pg":
+		default:
+			return `$${n}`;
+	}
+};
+
+/**
  * Converts a data object into SQL parameter lists for building dynamic SQL statements.
  *
- * This function extracts data from an object and generates various formats useful for
- * programmatically creating SQL statements with parameterized queries (PostgreSQL-style $1, $2, etc).
+ * Extracts values from an object and generates the building blocks for parameterized
+ * queries: quoted identifiers, positional placeholders, the values array, `"col" = $n`
+ * pairs, a named-parameter map, and the next placeholder number for chaining.
  *
- * @param data - The source data object to extract values from
+ * @param data - Source data object. `null`/`undefined` is treated as an empty object.
+ *               Only own (non-inherited) properties are considered.
  * @param extractor - Optional extraction strategy:
- *   - `undefined`: Extract all keys from data (except undefined values)
- *   - `string[]`: Array of key names to extract (whitelist)
- *   - `Record<string, TransformFn | boolean>`: Object mapping keys to transform functions or boolean flags
- *     - `true`: Include the key without transformation
- *     - `false`: Exclude the key from extraction
- *     - `TransformFn`: Include the key and apply the transformation function
- *
- * @returns Object containing:
- *   - `keys`: Array of quoted SQL identifiers (e.g., `['"name"', '"age"']`)
- *   - `placeholders`: Array of positional placeholders (e.g., `['$1', '$2']`)
- *   - `values`: Array of extracted values in the same order as placeholders
- *   - `pairs`: Array of "key = placeholder" strings for UPDATE statements (e.g., `['"name" = $1']`)
- *   - `map`: Object with named parameters using `$` prefix (e.g., `{$name: 'John', $age: 30}`)
- *   - `_next`: Next placeholder number available for additional parameters
- *   - `_extractor`: Object containing the transform functions used for each key
+ *   - `undefined`: extract all defined own keys
+ *   - `string[]`: whitelist of keys to extract
+ *   - `Record<string, TransformFn | boolean>`:
+ *     - `true`  — include the key without transformation
+ *     - `false` — exclude the key from extraction
+ *     - function — include and apply the transformer
+ * @param options - Optional {@link SqlParamsOptions} (placeholder dialect, starting number).
  *
  * @example
- * // Extract all defined keys
+ * // Extract all defined own keys (undefined values and inherited keys are skipped)
  * const result = dataToSqlParams({ a: 1, b: 2, c: undefined });
- * // result.keys = ['"a"', '"b"']
+ * // result.keys         = ['"a"', '"b"']
  * // result.placeholders = ['$1', '$2']
- * // result.values = [1, 2]
- * // result.pairs = ['"a" = $1', '"b" = $2']
- * // result.map = { $a: 1, $b: 2 }
+ * // result.values       = [1, 2]
+ * // result.pairs        = ['"a" = $1', '"b" = $2']
+ * // result.map          = { $a: 1, $b: 2 }
+ * // result.next         = 3
  *
  * @example
- * // Extract specific keys only
- * const result = dataToSqlParams({ a: 1, b: 2, c: 3 }, ['a', 'c']);
- * // result.values = [1, 3]
+ * // Continue numbering into a WHERE clause
+ * const set   = dataToSqlParams({ name: "Jane" });
+ * const where = dataToSqlParams({ id: 1 }, undefined, { startAt: set.next });
+ * const sql = `UPDATE t SET ${set.pairs} WHERE ${where.pairs}`;
+ * await db.query(sql, [...set.values, ...where.values]);
  *
  * @example
- * // Transform values during extraction
- * const result = dataToSqlParams(
- *   { id: 1, name: 'John', createdAt: new Date() },
- *   { id: true, name: (v) => v.toUpperCase(), createdAt: (v) => v.toISOString() }
- * );
+ * // MySQL-style placeholders
+ * const { placeholders } = dataToSqlParams({ a: 1, b: 2 }, undefined, { placeholderStyle: "mysql" });
+ * // ['?', '?']
  */
-export const dataToSqlParams = (
+export const dataToSqlParams = <
 	// deno-lint-ignore no-explicit-any
-	data: Record<string, any>,
-	extractor?: string[] | Record<string, TransformFn | boolean>
+	T extends Record<string, any> = Record<string, any>,
+>(
+	data: T | null | undefined,
+	extractor?: Extractor<T>,
+	options?: SqlParamsOptions,
 ): SqlParamsResult => {
-	const _noTransform = (v: any) => v;
+	const style: PlaceholderStyle = options?.placeholderStyle ?? "pg";
+	const startAt = options?.startAt ?? 1;
+	// deno-lint-ignore no-explicit-any
+	const safeData: Record<string, any> = (data ?? {}) as Record<string, any>;
 
-	// If no extractor is provided, collect all data keys
-	if (!extractor) {
-		extractor = Object.keys(data);
+	let normalized: Record<string, TransformFn | boolean>;
+	if (extractor == null) {
+		normalized = Object.fromEntries(
+			Object.keys(safeData).map((k) => [k, _noTransform]),
+		);
+	} else if (Array.isArray(extractor)) {
+		normalized = Object.fromEntries(
+			(extractor as readonly string[]).map((k) => [k, _noTransform]),
+		);
+	} else {
+		normalized = extractor as Record<string, TransformFn | boolean>;
 	}
 
-	// If array, use as a whitelist and extract all with default no-op strategy
-	if (Array.isArray(extractor)) {
-		extractor = extractor.reduce((m, k) => ({ ...m, [k]: _noTransform }), {});
+	const transformers: Record<string, TransformFn> = {};
+	const result: SqlParamsResult = {
+		keys: [],
+		placeholders: [],
+		values: [],
+		pairs: [],
+		map: {},
+		next: startAt,
+		transformers,
+		_next: startAt,
+		_extractor: transformers,
+	};
+
+	let counter = startAt;
+	for (const [k, rawExtract] of Object.entries(normalized)) {
+		if (!Object.hasOwn(safeData, k)) continue;
+		if (safeData[k] === undefined) continue;
+		if (rawExtract === false) continue;
+
+		let extract: TransformFn;
+		if (rawExtract === true) {
+			extract = _noTransform;
+		} else if (typeof rawExtract === "function") {
+			extract = rawExtract as TransformFn;
+		} else {
+			throw new TypeError(`Unexpected transformer value '${rawExtract}'`);
+		}
+
+		transformers[k] = extract;
+
+		const value = extract(safeData[k]);
+		if (value === undefined) continue;
+
+		const key = `"${k.replace(/"/g, '""')}"`;
+		const placeholder = formatPlaceholder(counter++, style);
+		result.keys.push(key);
+		result.placeholders.push(placeholder);
+		result.values.push(value);
+		result.pairs.push(`${key} = ${placeholder}`);
+		result.map[`$${k}`] = value;
 	}
 
-	let _counter = 1;
-	return Object.entries(extractor).reduce(
-		(m, [k, extract]) => {
-			// Skip undefined values and explicitly excluded keys
-			if (data[k] === undefined || extract === false) return m;
+	result.next = counter;
+	result._next = counter;
 
-			// Explicit true is a special case for no transformation
-			if (extract === true) extract = _noTransform;
-
-			// At this point, we expect a transformer function
-			if (typeof extract !== 'function') {
-				throw new TypeError(`Unexpected transformer value '${extract}'`);
-			}
-
-			// Save transformer for later reuse
-			m._extractor[k] = extract;
-
-			const value = extract(data[k]);
-
-			// Skip undefined values returned by transformer
-			if (value !== undefined) {
-				// SQL standard style quoted identifier (escape quotes by doubling them)
-				const key = `"${k.replace(/"/g, '""')}"`;
-				const placeholder = `$${_counter++}`;
-
-				m.keys.push(key);
-				m.placeholders.push(placeholder);
-				m.values.push(value);
-				m.pairs.push(`${key} = ${placeholder}`);
-				m.map[`$${k}`] = value;
-
-				// Track next available placeholder number for potential later use
-				m._next = _counter;
-			}
-
-			return m;
-		},
-		{
-			keys: [],
-			placeholders: [],
-			values: [],
-			pairs: [],
-			map: {},
-			_next: _counter,
-			_extractor: {},
-		} as any
-	);
+	return result;
 };

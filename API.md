@@ -3,10 +3,11 @@
 ## dataToSqlParams
 
 ```typescript
-function dataToSqlParams(
-  data: Record<string, any>,
-  extractor?: string[] | Record<string, TransformFn | boolean>
-): SqlParamsResult
+function dataToSqlParams<T extends Record<string, any> = Record<string, any>>(
+	data: T | null | undefined,
+	extractor?: Extractor<T>,
+	options?: SqlParamsOptions,
+): SqlParamsResult;
 ```
 
 Converts a data object into SQL parameter lists for building dynamic SQL statements.
@@ -15,102 +16,143 @@ Converts a data object into SQL parameter lists for building dynamic SQL stateme
 
 #### `data`
 
-**Type:** `Record<string, any>`
+**Type:** `T | null | undefined`
 
-The source data object to extract values from. All enumerable properties are candidates for extraction.
+The source data object to extract values from. Only **own** (non-inherited) properties are considered; prototype-chain properties are ignored. Passing `null` or `undefined` is safe and is treated as an empty object.
 
 #### `extractor` (optional)
 
-**Type:** `string[] | Record<string, TransformFn | boolean>`
+**Type:** `Extractor<T>` — see [`Extractor<T>`](#extractort).
 
-Defines which keys to extract and how to transform their values. There are three modes:
+Defines which keys to extract and how to transform their values. Three modes:
 
-| Mode | Value | Behavior |
-|------|-------|----------|
-| Extract all | `undefined` (omit parameter) | Extracts all keys from data, skipping `undefined` values |
-| Whitelist | `string[]` | Only extracts the specified keys |
-| Transform map | `Record<string, TransformFn \| boolean>` | Fine-grained control per key (see below) |
+| Mode          | Value                                    | Behavior                                      |
+| ------------- | ---------------------------------------- | --------------------------------------------- |
+| Extract all   | `undefined` (omit parameter)             | Extracts every defined own key from `data`    |
+| Whitelist     | `string[]`                               | Only extracts the listed keys (own keys only) |
+| Transform map | `Record<string, TransformFn \| boolean>` | Per-key control (see below)                   |
 
 **Transform map values:**
 
-- `true` - Include the key without transformation
-- `false` - Exclude the key from extraction
-- `TransformFn` - Apply a custom transformation function
+- `true` — Include the key without transformation
+- `false` — Exclude the key from extraction
+- `TransformFn` — Apply a custom transformation function
+
+#### `options` (optional)
+
+**Type:** [`SqlParamsOptions`](#sqlparamsoptions)
+
+| Option             | Type                         | Default | Purpose                                |
+| ------------------ | ---------------------------- | ------- | -------------------------------------- |
+| `placeholderStyle` | `"pg" \| "mysql" \| "mssql"` | `"pg"`  | Dialect for `placeholders` and `pairs` |
+| `startAt`          | `number`                     | `1`     | Starting positional-placeholder number |
 
 ### Return Value
 
-Returns a `SqlParamsResult` object with the following properties:
+Returns a [`SqlParamsResult`](#sqlparamsresult) object with the following properties:
 
 #### `keys`
 
 **Type:** `string[]`
 
-Array of SQL-quoted identifiers (column names). Quotes within identifiers are properly escaped by doubling.
+Array of SQL-quoted identifiers (column names). Quotes within identifiers are escaped by doubling per SQL standard.
 
 ```typescript
-// Example
-['"name"', '"email"', '"created_at"']
+['"name"', '"email"', '"created_at"'];
 ```
 
 #### `placeholders`
 
 **Type:** `string[]`
 
-Array of PostgreSQL-style positional placeholders corresponding to the values.
+Positional placeholders corresponding to the values, in the dialect set by `placeholderStyle`.
 
-```typescript
-// Example
-['$1', '$2', '$3']
-```
+- `pg` (default): `['$1', '$2', '$3']`
+- `mysql`: `['?', '?', '?']`
+- `mssql`: `['@p1', '@p2', '@p3']`
 
 #### `values`
 
 **Type:** `any[]`
 
-Array of extracted (and optionally transformed) values in the same order as placeholders.
-
-```typescript
-// Example
-['John', 'john@example.com', '2024-01-01T00:00:00.000Z']
-```
+Array of extracted (and optionally transformed) values in the same order as `placeholders`.
 
 #### `pairs`
 
 **Type:** `string[]`
 
-Array of `"key" = $N` strings for use in UPDATE SET clauses.
+Array of `"key" = <placeholder>` strings for use in UPDATE SET clauses or WHERE conjuncts.
 
 ```typescript
-// Example
-['"name" = $1', '"email" = $2', '"created_at" = $3']
+['"name" = $1', '"email" = $2', '"created_at" = $3'];
 ```
 
 #### `map`
 
 **Type:** `Record<string, any>`
 
-Object with named parameters using `$` prefix for the key. Useful for database drivers that support named parameter binding.
+Named-parameter object using the `$`-prefixed field name as key. Independent of `placeholderStyle` — this is a named-parameter output, not a positional one. Intended for drivers that bind by name (e.g. `better-sqlite3`).
 
 ```typescript
-// Example
-{ $name: 'John', $email: 'john@example.com', $created_at: '2024-01-01T00:00:00.000Z' }
+{ $name: 'John', $email: 'john@example.com' }
 ```
+
+#### `next`
+
+**Type:** `number`
+
+The next available placeholder number. Feed this into `options.startAt` of a follow-up call to chain parameter lists (e.g. for a WHERE clause).
+
+#### `transformers`
+
+**Type:** `Record<string, TransformFn>`
+
+The transform functions used for each **successfully extracted** key, keyed by original field name. Useful for applying the same transformation elsewhere (e.g. in a WHERE clause) so the SQL stays consistent with the SET clause.
+
+Boolean `true` in the input extractor is stored here as an identity function. Keys that were **skipped** (excluded via `false`, absent from `data`, or whose transformer returned `undefined`) do NOT appear here.
 
 #### `_next`
 
 **Type:** `number`
 
-The next placeholder number available. Use this when you need to add additional parameters (e.g., WHERE conditions) after the main query components.
-
-```typescript
-// If 3 fields were extracted, _next will be 4
-```
+**Deprecated.** Alias of `next`. Retained for backwards compatibility.
 
 #### `_extractor`
 
 **Type:** `Record<string, TransformFn>`
 
-Object containing the transform functions used for each extracted key. Boolean values in the original extractor are converted to identity functions. Use this to apply the same transformations consistently in other parts of your query.
+**Deprecated.** Alias of `transformers` — the exact same object reference is used, so mutations to either are visible through both.
+
+---
+
+## SqlParamsOptions
+
+```typescript
+interface SqlParamsOptions {
+	placeholderStyle?: "pg" | "mysql" | "mssql";
+	startAt?: number;
+}
+```
+
+### `placeholderStyle`
+
+Placeholder dialect for `placeholders` and `pairs`. Default `"pg"`.
+
+- `"pg"` → `$1`, `$2`, ... (PostgreSQL, SQLite)
+- `"mysql"` → `?` (MySQL, MariaDB — no numbering)
+- `"mssql"` → `@p1`, `@p2`, ... (SQL Server)
+
+The `map` output always uses `$name` regardless of this option.
+
+### `startAt`
+
+Starting placeholder number. Default `1`. Use with `next` from a previous call to compose WHERE clauses without placeholder collisions:
+
+```typescript
+const set = dataToSqlParams({ status: "active" });
+const where = dataToSqlParams({ id: 1 }, undefined, { startAt: set.next });
+// where.placeholders = ['$2']
+```
 
 ---
 
@@ -118,24 +160,50 @@ Object containing the transform functions used for each extracted key. Boolean v
 
 ```typescript
 interface SqlParamsResult {
-  keys: string[];
-  placeholders: string[];
-  values: any[];
-  pairs: string[];
-  map: Record<string, any>;
-  _next: number;
-  _extractor: Record<string, TransformFn>;
+	keys: string[];
+	placeholders: string[];
+	values: any[];
+	pairs: string[];
+	map: Record<string, any>;
+	next: number;
+	transformers: Record<string, TransformFn>;
+	/** @deprecated alias of `next` */
+	_next: number;
+	/** @deprecated alias of `transformers` */
+	_extractor: Record<string, TransformFn>;
 }
 ```
 
-Result object returned by `dataToSqlParams()`. See the return value documentation above for details on each property.
+See the return-value documentation above for details on each property.
+
+---
+
+## Extractor\<T>
+
+```typescript
+type Extractor<T> =
+	| ReadonlyArray<Extract<keyof T, string>>
+	| { [K in Extract<keyof T, string>]?: TransformFn | boolean }
+	| readonly string[]
+	| Record<string, TransformFn | boolean>;
+```
+
+Union of the three accepted extractor shapes. The first two members provide typed extraction when `T` is a concrete interface; the latter two accept any string keys for looser usage.
+
+---
+
+## PlaceholderStyle
+
+```typescript
+type PlaceholderStyle = "pg" | "mysql" | "mssql";
+```
 
 ---
 
 ## TransformFn
 
 ```typescript
-type TransformFn = (v: any) => any
+type TransformFn = (v: any) => any;
 ```
 
 Transform function type for converting values during extraction.
@@ -167,25 +235,25 @@ const skipEmpty: TransformFn = (v) => v || undefined;
 ### Extract All Keys
 
 ```typescript
-import { dataToSqlParams } from '@marianmeres/data-to-sql-params';
+import { dataToSqlParams } from "@marianmeres/data-to-sql-params";
 
 const result = dataToSqlParams({ a: 1, x: undefined, b: 2, c: 3 });
-// result.keys = ['"a"', '"b"', '"c"']
+// result.keys         = ['"a"', '"b"', '"c"']
 // result.placeholders = ['$1', '$2', '$3']
-// result.values = [1, 2, 3]
-// result.pairs = ['"a" = $1', '"b" = $2', '"c" = $3']
-// result.map = { $a: 1, $b: 2, $c: 3 }
-// result._next = 4
+// result.values       = [1, 2, 3]
+// result.pairs        = ['"a" = $1', '"b" = $2', '"c" = $3']
+// result.map          = { $a: 1, $b: 2, $c: 3 }
+// result.next         = 4
 ```
 
 ### Whitelist Keys
 
 ```typescript
 const result = dataToSqlParams(
-  { a: 1, x: undefined, b: 2, c: 3 },
-  ['b', 'c', 'x']  // 'x' will be skipped (undefined)
+	{ a: 1, x: undefined, b: 2, c: 3 },
+	["b", "c", "x"], // 'x' is skipped (undefined in data)
 );
-// result.keys = ['"b"', '"c"']
+// result.keys   = ['"b"', '"c"']
 // result.values = [2, 3]
 ```
 
@@ -193,12 +261,12 @@ const result = dataToSqlParams(
 
 ```typescript
 const result = dataToSqlParams(
-  { id: 1, name: 'alice', createdAt: new Date('2024-01-01') },
-  {
-    id: true,                           // Include without transformation
-    name: (v) => v.toUpperCase(),       // Transform to uppercase
-    createdAt: (v) => v.toISOString(),  // Convert Date to string
-  }
+	{ id: 1, name: "alice", createdAt: new Date("2024-01-01") },
+	{
+		id: true, // Include without transformation
+		name: (v) => v.toUpperCase(), // Transform to uppercase
+		createdAt: (v) => v.toISOString(), // Convert Date to string
+	},
 );
 // result.values = [1, 'ALICE', '2024-01-01T00:00:00.000Z']
 ```
@@ -207,12 +275,12 @@ const result = dataToSqlParams(
 
 ```typescript
 const result = dataToSqlParams(
-  { id: 1, password: 'secret', email: 'user@example.com' },
-  {
-    id: true,
-    password: false,  // Explicitly exclude
-    email: true,
-  }
+	{ id: 1, password: "secret", email: "user@example.com" },
+	{
+		id: true,
+		password: false, // Explicitly exclude
+		email: true,
+	},
 );
 // Only id and email are extracted
 ```
@@ -221,18 +289,18 @@ const result = dataToSqlParams(
 
 ```typescript
 const userData = {
-  name: 'John Doe',
-  email: 'john@example.com',
-  createdAt: new Date(),
+	name: "John Doe",
+	email: "john@example.com",
+	createdAt: new Date(),
 };
 
 const { keys, placeholders, values } = dataToSqlParams(userData, {
-  name: true,
-  email: true,
-  createdAt: (d) => d.toISOString(),
+	name: true,
+	email: true,
+	createdAt: (d) => d.toISOString(),
 });
 
-const sql = `INSERT INTO users (${keys.join(', ')}) VALUES (${placeholders.join(', ')})`;
+const sql = `INSERT INTO users (${keys.join(", ")}) VALUES (${placeholders.join(", ")})`;
 // INSERT INTO users ("name", "email", "createdAt") VALUES ($1, $2, $3)
 
 await db.query(sql, values);
@@ -241,27 +309,64 @@ await db.query(sql, values);
 ### Dynamic UPDATE Statement
 
 ```typescript
-const updates = { name: 'Jane Doe', email: 'jane@example.com' };
+const updates = { name: "Jane Doe", email: "jane@example.com" };
 const userId = 123;
 
-const { pairs, values, _next } = dataToSqlParams(updates);
+const { pairs, values, next } = dataToSqlParams(updates);
 
-const sql = `UPDATE users SET ${pairs.join(', ')} WHERE "id" = $${_next}`;
+const sql = `UPDATE users SET ${pairs.join(", ")} WHERE "id" = $${next}`;
 // UPDATE users SET "name" = $1, "email" = $2 WHERE "id" = $3
 
 await db.query(sql, [...values, userId]);
 ```
 
+### Composing WHERE with `startAt`
+
+```typescript
+const set = dataToSqlParams({ status: "active" });
+const where = dataToSqlParams(
+	{ tenantId: 7, id: 123 },
+	undefined,
+	{ startAt: set.next },
+);
+
+const sql = `UPDATE users SET ${set.pairs.join(", ")} WHERE ${where.pairs.join(" AND ")}`;
+// UPDATE users SET "status" = $1 WHERE "tenantId" = $2 AND "id" = $3
+
+await db.query(sql, [...set.values, ...where.values]);
+```
+
+### Non-PostgreSQL Placeholders
+
+```typescript
+// MySQL
+const mysql = dataToSqlParams(
+	{ a: 1, b: 2 },
+	undefined,
+	{ placeholderStyle: "mysql" },
+);
+// mysql.placeholders = ['?', '?']
+// mysql.pairs        = ['"a" = ?', '"b" = ?']
+
+// SQL Server
+const mssql = dataToSqlParams(
+	{ a: 1, b: 2 },
+	undefined,
+	{ placeholderStyle: "mssql" },
+);
+// mssql.placeholders = ['@p1', '@p2']
+```
+
 ### Reusing Transform Functions
 
 ```typescript
-const data = { id: 1, name: 'alice' };
-const { _extractor, values } = dataToSqlParams(data, {
-  id: true,
-  name: (v) => v.toUpperCase(),
+const data = { id: 1, name: "alice" };
+const { transformers, values } = dataToSqlParams(data, {
+	id: true,
+	name: (v) => v.toUpperCase(),
 });
 
 // Later, apply the same transformation for consistency
-const newName = 'bob';
-const transformed = _extractor.name(newName);  // 'BOB'
+const newName = "bob";
+const transformed = transformers.name(newName); // 'BOB'
 ```
